@@ -313,6 +313,8 @@ class DatabaseConfig:
     # General settings
     db_path: Optional[str] = None  # Path to store database on disk
     in_memory: bool = True
+    use_pareto_archive: bool = False
+    pareto_objectives: List[str] = field(default_factory=list)
 
     # Prompt and response logging to programs/<id>.json
     log_prompts: bool = True

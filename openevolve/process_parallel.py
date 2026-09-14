@@ -155,10 +155,17 @@ def _run_iteration_worker(
         ]
 
         # Sort by metrics for top programs
-        island_programs.sort(
-            key=lambda p: p.metrics.get("combined_score", safe_numeric_average(p.metrics)),
-            reverse=True,
-        )
+        if _worker_config.database.use_pareto_archive:
+            from openevolve.pareto import objectives, ranked, tuplify
+            import random
+            context_rng = random.Random()
+            context_rng.setstate(tuplify(db_snapshot["pareto_context_rng"]))
+            island_programs = ranked(island_programs, objectives(_worker_config.database), context_rng)
+        else:
+            island_programs.sort(
+                key=lambda p: p.metrics.get("combined_score", safe_numeric_average(p.metrics)),
+                reverse=True,
+            )
 
         # Use config values for limits instead of hardcoding
         # Programs for LLM display (includes both top and diverse for inspiration)
@@ -191,6 +198,8 @@ def _run_iteration_worker(
             program_artifacts=parent_artifacts,
             feature_dimensions=db_snapshot.get("feature_dimensions", []),
             current_changes_description=parent_changes_desc,
+            pareto_objectives=(_worker_config.database.pareto_objectives
+                               if _worker_config.database.use_pareto_archive else None),
         )
 
         iteration_start = time.time()
@@ -533,6 +542,10 @@ class ProcessParallelController:
         checkpoint_callback=None,
     ):
         """Run evolution with process-based parallelism"""
+        if self.config.database.use_pareto_archive and (target_score is not None or self.config.early_stopping_patience is not None):
+            raise ValueError("Scalar target_score/early stopping is disabled in Pareto mode")
+        if self.config.database.use_pareto_archive and self.config.prompt.template_dir:
+            raise ValueError("Pareto mode requires the default user template directory")
         if not self.executor:
             raise RuntimeError("Process pool not started")
 
@@ -701,7 +714,8 @@ class ProcessParallelController:
                             self._warned_about_combined_score = False
 
                         if (
-                            "combined_score" not in child_program.metrics
+                            not self.config.database.use_pareto_archive
+                            and "combined_score" not in child_program.metrics
                             and not self._warned_about_combined_score
                         ):
                             avg_score = safe_numeric_average(child_program.metrics)
@@ -714,7 +728,7 @@ class ProcessParallelController:
                             self._warned_about_combined_score = True
 
                     # Check for new best
-                    if self.database.best_program_id == child_program.id:
+                    if not self.config.database.use_pareto_archive and self.database.best_program_id == child_program.id:
                         logger.info(
                             f"🌟 New best solution found at iteration {completed_iteration}: "
                             f"{child_program.id}"
@@ -870,6 +884,13 @@ class ProcessParallelController:
             # Create database snapshot
             db_snapshot = self._create_database_snapshot()
             db_snapshot["sampling_island"] = target_island  # Mark which island this is for
+            if self.config.database.use_pareto_archive:
+                from openevolve.pareto import rng
+                import random
+                db_snapshot["pareto_context_rng"] = random.Random(rng(self.database).getrandbits(128)).getstate()
+                parent_artifacts = self.database.get_artifacts(parent.id)
+                if parent_artifacts:
+                    db_snapshot["artifacts"][parent.id] = parent_artifacts
 
             # Submit to process pool
             future = self.executor.submit(

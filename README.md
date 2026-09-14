@@ -54,7 +54,7 @@ Full reproducibility, extensive evaluation pipelines, and scientific rigor built
 | **Time to Solution** | Days to weeks | Hours |
 | **Exploration Breadth** | Limited by human creativity | Unlimited LLM creativity |
 | **Reproducibility** | Hard to replicate | Fully deterministic |
-| **Multi-objective** | Complex tradeoffs | Automatic Pareto optimization |
+| **Multi-objective** | Complex tradeoffs | Opt-in explicit Pareto selection; scalar selection remains the default |
 | **Scaling** | Doesn't scale | Parallel evolution across islands |
 
 ## Proven Achievements
@@ -226,9 +226,17 @@ OpenEvolve implements a sophisticated **evolutionary coding pipeline** that goes
 | **Algorithm Discovery** | Finds novel approaches to classic problems |
 | **Scientific Computing** | Automates tedious manual tuning processes |
 | **Competitive Programming** | Generates multiple solution strategies |
-| **Multi-Objective Problems** | Pareto-optimal solutions across dimensions |
+| **Multi-Objective Problems** | Retains nondominated observed programs with the opt-in Pareto mode |
 
 ## 🛠 Installation & Setup
+
+### Pareto fork
+
+This branch adds explicit vector selection without averaging evaluator metrics.
+It combines reviewed OpenEvolve-derivative mechanisms with dependency-light
+non-dominated sorting. See [the source comparison and selection contract](docs/pareto-design.md)
+and [usage and verification](docs/pareto-usage.md). Existing scalar behavior stays
+the default; enabling Pareto does not convert existing checkpoints.
 
 ### Requirements
 - **Python**: 3.10+ 

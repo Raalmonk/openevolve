@@ -239,6 +239,10 @@ class OpenEvolve:
         Returns:
             Best program found
         """
+        if self.config.database.use_pareto_archive and (target_score is not None or self.config.early_stopping_patience is not None):
+            raise ValueError("Scalar target_score/early stopping is disabled in Pareto mode")
+        if self.config.database.use_pareto_archive and self.config.prompt.template_dir:
+            raise ValueError("Pareto mode requires the default user template directory")
         max_iterations = iterations or self.config.max_iterations
         # Determine starting iteration
         start_iteration = 0
@@ -285,7 +289,7 @@ class OpenEvolve:
                 logger.info(f"Stored artifacts for initial program")
 
             # Check if combined_score is present in the metrics
-            if "combined_score" not in initial_metrics:
+            if not self.config.database.use_pareto_archive and "combined_score" not in initial_metrics:
                 # Calculate average of numeric metrics
                 numeric_metrics = [
                     v
@@ -533,6 +537,9 @@ class OpenEvolve:
 
         best_dir = os.path.join(self.output_dir, "best")
         os.makedirs(best_dir, exist_ok=True)
+        if self.config.database.use_pareto_archive:
+            from openevolve.pareto import export_front
+            export_front(self.database, best_dir)
 
         # Use the extension from the initial program file
         filename = f"best_program{self.file_extension}"
@@ -554,6 +561,8 @@ class OpenEvolve:
                     "timestamp": program.timestamp,
                     "parent_id": program.parent_id,
                     "metrics": program.metrics,
+                    **({"selection_mode": "pareto", "representative_only": True}
+                       if self.config.database.use_pareto_archive else {}),
                     "language": program.language,
                     "saved_at": time.time(),
                 },

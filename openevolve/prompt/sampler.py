@@ -126,6 +126,35 @@ class PromptSampler:
             )
 
         # Format metrics
+        pareto_objectives = kwargs.pop("pareto_objectives", None)
+        if pareto_objectives:
+            if self.config.template_dir or template_key or self.user_template_override:
+                raise ValueError("Pareto mode requires the default user template")
+            # Preserve system instructions, artifacts and native diff/rewrite format.
+            # The scalar template's fitness prose must not reintroduce a surrogate.
+            import json
+            history = []
+            seen = set()
+            for program in previous_programs + top_programs + inspirations:
+                if program["id"] in seen:
+                    continue
+                seen.add(program["id"])
+                history.append(json.dumps({"id": program["id"], "metrics": program.get("metrics", {}),
+                                           "code": program.get("code", ""),
+                                           "changes_description": program.get("changes_description")}, ensure_ascii=False))
+            format_instruction = ("Use exact SEARCH/REPLACE blocks:\n<<<<<<< SEARCH\noriginal code\n=======\nreplacement code\n>>>>>>> REPLACE"
+                                  if diff_based_evolution else f"Return the complete program in a fenced {language} code block.")
+            user_message = (f"Maximize these separate objectives: {', '.join(pareto_objectives)}.\n"
+                            "Seek nondominated tradeoffs. Examples represent different objective tradeoffs; order is not a scalar quality ranking.\n"
+                            f"Current metrics: {json.dumps(program_metrics)}\n"
+                            + (self._render_artifacts(program_artifacts) if self.config.include_artifacts and program_artifacts else "")
+                            + "\nContext programs:\n" + "\n".join(history)
+                            + f"\nCurrent program:\n```{language}\n{current_program}\n```\n" + format_instruction)
+            if self.config.programs_as_changes_description:
+                user_message = self.template_manager.get_template("user_message_with_changes_description").format(
+                    user_message=user_message, changes_description=current_changes_description.rstrip())
+            return {"system": system_message, "user": user_message}
+
         metrics_str = self._format_metrics(program_metrics)
 
         # Identify areas for improvement

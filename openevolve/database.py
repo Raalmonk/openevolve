@@ -112,6 +112,10 @@ class Program:
         return cls(**filtered_data)
 
 
+from openevolve.pareto import pareto_database
+
+
+@pareto_database
 class ProgramDatabase:
     """
     Database for storing and sampling programs during evolution
@@ -1850,11 +1854,15 @@ class ProgramDatabase:
             if not island_programs:
                 continue
 
-            # Sort by fitness (using combined_score or average metrics)
-            island_programs.sort(
-                key=lambda p: get_fitness_score(p.metrics, self.config.feature_dimensions),
-                reverse=True,
-            )
+            # Pareto mode uses the shared distinct-vector rank, preserving native migration.
+            if self.config.use_pareto_archive:
+                from openevolve.pareto import objectives, ranked, rng
+                island_programs = ranked(island_programs, objectives(self.config), rng(self))
+            else:
+                island_programs.sort(
+                    key=lambda p: get_fitness_score(p.metrics, self.config.feature_dimensions),
+                    reverse=True,
+                )
 
             # Select top programs for migration
             num_to_migrate = max(1, int(len(island_programs) * self.migration_rate))
@@ -1912,6 +1920,8 @@ class ProgramDatabase:
                         generation=migrant.generation,
                         metrics=migrant.metrics.copy(),
                         metadata={**migrant.metadata, "island": target_island, "migrant": True},
+                        artifacts_json=(migrant.artifacts_json if self.config.use_pareto_archive else None),
+                        artifact_dir=(migrant.artifact_dir if self.config.use_pareto_archive else None),
                     )
 
                     # Use add() method to properly handle MAP-Elites deduplication,
