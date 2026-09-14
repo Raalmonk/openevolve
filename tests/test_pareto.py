@@ -30,6 +30,29 @@ def program(pid, a, b):
 
 
 class ParetoBackportTests(unittest.TestCase):
+    def test_full_controller_does_not_inject_pareto_novelty(self):
+        from openevolve.controller import OpenEvolve
+        with tempfile.TemporaryDirectory() as folder:
+            seed = Path(folder) / "seed.py"
+            seed.write_text("x = 1\n")
+            for pareto in (True, False):
+                cfg = Config()
+                cfg.database.use_pareto_archive = pareto
+                cfg.database.pareto_objectives = ["a", "b"]
+                with patch("openevolve.controller.LLMEnsemble"), patch("openevolve.controller.Evaluator"):
+                    engine = OpenEvolve(str(seed), "unused.py", cfg, str(Path(folder) / str(pareto)))
+                if pareto:
+                    self.assertIsNone(engine.config.database.novelty_llm)
+                else:
+                    self.assertIs(engine.config.database.novelty_llm, engine.llm_ensemble)
+            cfg = Config()
+            cfg.database.use_pareto_archive = True
+            cfg.database.pareto_objectives = ["a", "b"]
+            cfg.database.novelty_llm = object()
+            with patch("openevolve.controller.LLMEnsemble"), patch("openevolve.controller.Evaluator"):
+                with self.assertRaisesRegex(ValueError, "novelty"):
+                    OpenEvolve(str(seed), "unused.py", cfg, str(Path(folder) / "explicit"))
+
     def test_complete_front_and_population(self):
         db = ProgramDatabase(config(population_size=2, archive_size=1))
         db._calculate_feature_coords = lambda p: [0, 0]

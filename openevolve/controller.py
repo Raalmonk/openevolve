@@ -124,7 +124,8 @@ class OpenEvolve:
         if self.config.random_seed is not None:
             self.config.database.random_seed = self.config.random_seed
 
-        self.config.database.novelty_llm = self.llm_ensemble
+        if not self.config.database.use_pareto_archive:
+            self.config.database.novelty_llm = self.llm_ensemble
         self.database = ProgramDatabase(self.config.database)
 
         self.evaluator = Evaluator(
